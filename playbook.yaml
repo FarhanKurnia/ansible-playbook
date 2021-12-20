@@ -1,0 +1,96 @@
+---
+- name: Web Server Mysql PHP
+  hosts: osboxes
+  become: true
+  tasks:
+    - name: install webserver mysql PHP
+      apt:
+        name: "{{item}}"
+        state: latest
+        update_cache: yes
+      loop:
+        - apache2
+        - mysql-server
+        - python3-mysqldb
+        - libmysqlclient-dev
+        - php5-mysql
+        - php5
+        - libapache2-mod-php5
+        - php5-mcrypt
+        - php5-cli
+
+    - name: Create document root
+      file:
+        path: "/var/www/html"
+        state: directory
+        owner: "osboxes"
+        mode: '0755'
+
+    - name: Copy index test page
+      template:
+        src: "files/index.html"
+        dest: "/var/www/html/index.html"
+
+    - name: Set up Apache virtualhost
+      template:
+        src: "files/apache.conf"
+        dest: "/etc/apache2/sites-available/apache2.conf"
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite apache2.conf
+      notify: Reload Apache
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+
+    - name: "UFW - Allow HTTP on port 80"
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: start dan enable mysql service
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: creating mysql user
+      mysql_user:
+        name: "osboxes"
+        password: ""
+        priv: '*.*:ALL'
+        host: '%'
+        state: present
+
+    - name: creating farhan_db
+      mysql_db:
+        name: "farhan"
+        state: present
+
+    - name: Enable remote login to mysql
+      lineinfile:
+         path: /etc/mysql/mysql.conf.d/mysqld.cnf
+         regexp: '^bind-address'
+         line: 'bind-address = 0.0.0.0'
+         backup: yes
+      notify:
+         - Restart mysql
+
+handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+
+    - name: Restart mysql
+      service:
+        name: mysql
+        state: restarted
